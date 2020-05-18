@@ -12,6 +12,7 @@ from svg import Parser, Rasterizer, SVG
 from PIL import Image, ImageFilter
 import threading
 import yaml
+import datetime
 
 FULLSCREEN = False
 
@@ -76,8 +77,9 @@ def load(entry):
     if not icon_fn:
         return None
     fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0])
+    # print('icon fn:', fn)
     if not fn:
-        return None
+        fn = os.path.expanduser(icon_fn)
     if fn.endswith('.svg'):
         try:
             svg = Parser.parse_file(fn)
@@ -88,7 +90,6 @@ def load(entry):
         im = Image.frombytes('RGBA', icon_sz, imbuf)
         icon = pygame.image.fromstring(im.tobytes(), icon_sz, im.mode).convert_alpha()
         icon = pygame.transform.scale(icon, icon_sz)
-        pass
     elif fn.endswith('.png'):
         icon = pygame.image.load(fn).convert_alpha()
         icon = pygame.transform.scale(icon, icon_sz)
@@ -110,6 +111,7 @@ def start():
     pygame.display.set_caption('Couch Mode')
     found = False
     pygame.init()
+    pygame.mouse.set_visible(False)
     # drivers = ['fbcon', 'directfb', 'svgalib']
     # for driver in drivers:
     #     if not os.getenv('SDL_VIDEODRIVER'):
@@ -143,10 +145,10 @@ for appdir in appdirs:
         except xdg.Exceptions.ParsingError:
             continue
         name = de.getName()
-        run = de.getExec()
+        run = os.path.expanduser(de.getExec())
         icon_fn = de.getIcon()
         fn = os.path.splitext(path)[0].lower()
-        print(fn)
+        # print(fn)
         
         apps[fn] = entry = Entry(
             name,
@@ -171,8 +173,26 @@ with open('config.yaml', 'r') as cfg:
         background = background.convert()
     my_apps = cfg['apps']
 
+for i, app in enumerate(my_apps[:]):
+    if type(app) is dict:
+        key = list(app)[0]
+        # print(key)
+        # name = app[0]
+        # info = app[1]
+        # print('key',key)
+        # print('app',app)
+        app = app[key]
+        # print(key)
+        run = os.path.expanduser(app['run'])
+        icon = os.path.expanduser(app['icon'])
+        apps[key] = entry = Entry(app['name'], icon, run)
+        # print('key', key)
+        # print('entry', entry)
+        my_apps[i] = key
+
 for app in my_apps:
     try:
+        # print('app2', app)
         load(apps[app])
     except KeyError:
         pass
@@ -184,13 +204,36 @@ select = 0
 
 dirty = True
 border = 16
-padding = ivec2(64, 64)
+padding = ivec2(128, 64)
 y_wrap = resolution[0] - icon_sz[0] - padding[0]*2
-y_offset = y_wrap // icon_sz[0]
-print(y_offset)
+y_offset = y_wrap // (resolution[0] - icon_sz[0])
+# print(y_offset)
+
+pygame.font.init()
+font = pygame.font.Font(pygame.font.get_default_font(), 32)
+
+def write(text, pos, color=(255, 255, 255)):
+    global screen, resolution
+    pos = ivec2(*pos)
+    
+    # shadow
+    textbuf = font.render(text, True, (0,0,0))
+    screen.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2]//2 + 2, 2))
+    
+    # text
+    textbuf = font.render(text, True, color)
+    screen.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2]//2, 0))
+    
+
+last_date = None
 
 while not done:
     run = None
+    # date = subprocess.check_output(['date', '+%l:%M %p'])[:-1]
+    date = datetime.datetime.now().strftime('%l:%M %p')
+    if last_date != date:
+        last_date = date
+        dirty = True
 
     for btn in cec.buttons:
         if btn == b'left':
@@ -206,6 +249,9 @@ while not done:
             select = select - min(select, y_offset)
             dirty = True
         if btn == b'back':
+            done = True
+            break
+        if btn == b'exit':
             done = True
             break
         if btn == b'select':
@@ -238,22 +284,24 @@ while not done:
                 if ev.key == pygame.K_RETURN:
                     run = apps[my_apps[select]].run
                     break
-        
     if done:
         break
     
     if run:
-        pygame.quit()
+        pygame.mouse.set_visible(True)
+        pygame.display.quit()
         params = filter(lambda x: not x.startswith('%'), run.split())
         subprocess.check_call(params)
         screen = pygame.display.set_mode(resolution, pygame.FULLSCREEN if FULLSCREEN else 0)
+        pygame.mouse.set_visible(False)
         dirty = True
         continue
                 
     if dirty:
-        dirty = False
         # screen.fill(BLACK)
         screen.blit(background, (0,0))
+        write(date, ivec2(resolution[0]/2, 24))
+        
         for i in range(0, 50):
             if i < 0:
                 continue
@@ -274,8 +322,10 @@ while not done:
             # print(y)
             if app.icon:
                 screen.blit(app.icon, (x, y))
+                # write(app.name, ivec2(app.icon.get_rect()[2]//2 + x, y + icon_sz[1] + 16))
             if select == i:
-                pygame.draw.rect(screen, pygame.Color('gray'), (x,y,*icon_sz), 8)
+                pygame.draw.rect(screen, pygame.Color('black'), (x+2,y+2,*icon_sz), 8)
+                pygame.draw.rect(screen, pygame.Color('darkgray'), (x,y,*icon_sz), 8)
                 
         pygame.display.flip()
         dirty = False
