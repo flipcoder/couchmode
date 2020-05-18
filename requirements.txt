@@ -1,0 +1,5 @@
+pygame
+cec
+pyxdg
+pyglm
+pynanosvg
