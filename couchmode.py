@@ -22,7 +22,7 @@ class CEC(threading.Thread):
         self.proc = subprocess.Popen(
             'cec-client', stdin=subprocess.PIPE, stdout=subprocess.PIPE
         )
-        self.proc.stdin.write(b'as\n')
+        # self.proc.stdin.write(b'as\n')
         while self.proc.poll() is None:
             line = self.proc.stdout.readline()
             if b'key pressed' in line:
@@ -56,7 +56,7 @@ with open('config.yaml', 'r') as cfg:
 if 'icon_size' in cfg:
     icon_sz = ivec2(cfg['icon_size'])
 else:
-    icon_sz = ivec2(128)
+    icon_sz = ivec2(156)
 
 theme = cfg.get('theme', None)
 
@@ -87,7 +87,8 @@ def load(entry):
     try:
         fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], theme)
         if not fn:
-            fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], 'Adwaita')
+            fn = '/usr/share/icons/Faenza/apps/96/' + icon_fn + '.png'
+            # fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], 'Adwaita')
     except TypeError:
         print('Type Error when loading', entry.name)
         return None
@@ -105,7 +106,7 @@ def load(entry):
             return None
         im = Image.frombytes('RGBA', tuple(icon_sz), imbuf)
         icon = pygame.image.fromstring(im.tobytes(), icon_sz, im.mode).convert_alpha()
-        icon = pygame.transform.scale(icon, icon_sz)
+        # icon = pygame.transform.scale(icon, icon_sz)
     elif fn.endswith('.png'):
         icon = pygame.image.load(fn).convert_alpha()
         icon = pygame.transform.scale(icon, icon_sz)
@@ -179,6 +180,7 @@ try:
 except pygame.error:
     background = None
 if background:
+    # background = background.resize((1920 + 64, 1080 + 64), Image.ANTIALIAS)
     background = background.filter(ImageFilter.GaussianBlur(radius=10))
     background = pygame.image.fromstring(background.tobytes(), background.size, background.mode)
     background = background.convert()
@@ -198,6 +200,10 @@ for i, app in enumerate(my_apps[:]):
         # print(key)
         name = app.get('name', key)
         run = os.path.expanduser(app.get('run', key))
+        if not run:
+            web = app.get('web', None)
+            if web:
+                run = web + ' ' + run
         icon = app.get('icon', key)
         icon = os.path.expanduser(icon)
         apps[key] = entry = Entry(name, icon, run)
@@ -220,14 +226,14 @@ done = False
 select = 0
 
 dirty = True
-border = 16
-padding = ivec2(128, 64)
+border = 64
+padding = ivec2(176, 96)
 y_wrap = resolution[0] - icon_sz[0] - padding[0]*2
 y_offset = y_wrap // (resolution[0] - icon_sz[0])
 # print(y_offset)
 
 pygame.font.init()
-font = pygame.font.Font(pygame.font.get_default_font(), 32)
+font = pygame.font.Font(pygame.font.get_default_font(), 24)
 
 def write(text, pos, color=(255, 255, 255)):
     global screen, resolution
@@ -342,7 +348,7 @@ while not done:
             # print(y)
             if app.icon:
                 screen.blit(app.icon, (x, y))
-                # write(app.name, ivec2(app.icon.get_rect()[2]//2 + x, y + icon_sz[1] + 16))
+                write(app.name, ivec2(app.icon.get_rect()[2]//2 + x, y + icon_sz[1] + 16))
             if select == i:
                 pygame.draw.rect(screen, pygame.Color('black'), (x+2,y+2,*icon_sz), 8)
                 pygame.draw.rect(screen, pygame.Color('darkgray'), (x,y,*icon_sz), 8)
