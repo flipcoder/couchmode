@@ -196,9 +196,11 @@ for i, app in enumerate(my_apps[:]):
         # print('app',app)
         app = app[key]
         # print(key)
-        run = os.path.expanduser(app['run'])
-        icon = os.path.expanduser(app['icon'])
-        apps[key] = entry = Entry(app['name'], icon, run)
+        name = app.get('name', key)
+        run = os.path.expanduser(app.get('run', key))
+        icon = app.get('icon', key)
+        icon = os.path.expanduser(icon)
+        apps[key] = entry = Entry(name, icon, run)
         # print('key', key)
         # print('entry', entry)
         my_apps[i] = key
@@ -306,7 +308,10 @@ while not done:
         pygame.mouse.set_visible(True)
         pygame.display.quit()
         params = filter(lambda x: not x.startswith('%'), run.split())
-        subprocess.check_call(params)
+        try:
+            subprocess.check_call(params)
+        except subprocess.CalledProcessError:
+            pass
         screen = pygame.display.set_mode(resolution, pygame.FULLSCREEN if FULLSCREEN else 0)
         pygame.mouse.set_visible(False)
         dirty = True
