@@ -50,6 +50,16 @@ class CEC(threading.Thread):
         except:
             pass
 
+with open('config.yaml', 'r') as cfg:
+    cfg = yaml.safe_load(cfg)
+
+if 'icon_size' in cfg:
+    icon_sz = ivec2(cfg['icon_size'])
+else:
+    icon_sz = ivec2(128)
+
+theme = cfg.get('theme', None)
+
 cec = CEC()
 cec.start()
 
@@ -70,24 +80,30 @@ apps = {}
 
 BLACK = (0,0,0)
 
-icon_sz = (256, 256)
-
 def load(entry):
-    icon_fn = entry.icon_fn
+    icon_fn = entry.icon_fn = os.path.expanduser(entry.icon_fn)
     if not icon_fn:
         return None
-    fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0])
+    try:
+        fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], theme)
+        if not fn:
+            fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], 'Adwaita')
+    except TypeError:
+        print('Type Error when loading', entry.name)
+        return None
     # print('icon fn:', fn)
-    if not fn:
-        fn = os.path.expanduser(icon_fn)
     if fn.endswith('.svg'):
         try:
             svg = Parser.parse_file(fn)
         except:
+            print('error parsing', entry.name)
             return None
         rast = Rasterizer()
         imbuf = rast.rasterize(svg, *icon_sz)
-        im = Image.frombytes('RGBA', icon_sz, imbuf)
+        if not imbuf:
+            print('error rasterzing', entry.name)
+            return None
+        im = Image.frombytes('RGBA', tuple(icon_sz), imbuf)
         icon = pygame.image.fromstring(im.tobytes(), icon_sz, im.mode).convert_alpha()
         icon = pygame.transform.scale(icon, icon_sz)
     elif fn.endswith('.png'):
@@ -136,10 +152,7 @@ def start():
 for appdir in appdirs:
     appdir = os.path.expanduser(appdir)
     for path in os.listdir(appdir):
-        # with open(os.path.join(appdir, path), 'r') as f:
-        #     cfg = f.readlines()
         de = xdg.DesktopEntry.DesktopEntry()
-        # with open(os.path.join(appdir, path), 'r') as f:
         try:
             de.parse(os.path.join(appdir, path))
         except xdg.Exceptions.ParsingError:
@@ -159,19 +172,19 @@ for appdir in appdirs:
 
 start()
 
-with open('config.yaml', 'r') as cfg:
-    cfg = yaml.safe_load(cfg)
-    try:
-        fn = cfg['background']
-        background = Image.open(os.path.expanduser(fn))
-        # background = pygame.image.load(os.path.expanduser(fn))
-    except pygame.error:
-        background = None
-    if background:
-        background = background.filter(ImageFilter.GaussianBlur(radius=10))
-        background = pygame.image.fromstring(background.tobytes(), background.size, background.mode)
-        background = background.convert()
-    my_apps = cfg['apps']
+try:
+    fn = cfg['background']
+    background = Image.open(os.path.expanduser(fn))
+    # background = pygame.image.load(os.path.expanduser(fn))
+except pygame.error:
+    background = None
+if background:
+    background = background.filter(ImageFilter.GaussianBlur(radius=10))
+    background = pygame.image.fromstring(background.tobytes(), background.size, background.mode)
+    background = background.convert()
+
+# my_apps = list(apps.keys()) # all
+my_apps = cfg['apps']
 
 for i, app in enumerate(my_apps[:]):
     if type(app) is dict:
@@ -194,6 +207,8 @@ for app in my_apps:
     try:
         # print('app2', app)
         load(apps[app])
+    except ValueError:
+        pass
     except KeyError:
         pass
         # pygame.quit()
@@ -300,9 +315,9 @@ while not done:
     if dirty:
         # screen.fill(BLACK)
         screen.blit(background, (0,0))
-        write(date, ivec2(resolution[0]/2, 24))
+        write(date, ivec2(resolution[0]/2, 16))
         
-        for i in range(0, 50):
+        for i in range(len(my_apps)):
             if i < 0:
                 continue
             try:
