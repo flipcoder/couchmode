@@ -79,7 +79,7 @@ class Homescreen:
         self.fullscreen = self.cfg.get("fullscreen", False)
         self.theme = self.cfg.get("theme", None)
         self.browser = self.cfg.get("browser", None)
-        self.res = ivec2(*self.cfg.get('resolution', (1920,1080)))
+        self.res = ivec2(*self.cfg.get("resolution", (1920, 1080)))
 
         self.cec = CEC()
         self.cec.start()
@@ -368,12 +368,12 @@ class Homescreen:
             self.dirty = True
 
     def builtin(self, app):
-        if app=='desktop':
+        if app == "desktop":
             self.done = True
         else:
-            print('Not yet implemented')
+            print("Not yet implemented")
             self.done = True
-    
+
     def run(self):
         self.done = False
 
@@ -388,13 +388,15 @@ class Homescreen:
                 self.dirty = True
 
             if self.cec.buttons:
-                self.move((
-                    b'left' in self.cec.buttons,
-                    b'right' in self.cec.buttons,
-                    b'up' in self.cec.buttons,
-                    b'down' in self.cec.buttons,
-                ))
-            
+                self.move(
+                    (
+                        b"left" in self.cec.buttons,
+                        b"right" in self.cec.buttons,
+                        b"up" in self.cec.buttons,
+                        b"down" in self.cec.buttons,
+                    )
+                )
+
                 for btn in self.cec.buttons:
                     if btn == b"back":
                         self.done = True
@@ -404,7 +406,7 @@ class Homescreen:
                         break
                     if btn == b"select":
                         self.run = self.apps[self.my_apps[select]].run
-                        if self.run.startswith('@'):
+                        if self.run.startswith("@"):
                             self.builtin(self.run[1:])
                         break
                 self.cec.buttons.clear()
@@ -416,21 +418,23 @@ class Homescreen:
                         self.done = True
                         break
                     elif ev.type == pygame.KEYDOWN:
-                        self.move((
-                            ev.key == pygame.K_LEFT,
-                            ev.key == pygame.K_RIGHT,
-                            ev.key == pygame.K_UP,
-                            ev.key == pygame.K_DOWN,
-                        ))
+                        self.move(
+                            (
+                                ev.key == pygame.K_LEFT,
+                                ev.key == pygame.K_RIGHT,
+                                ev.key == pygame.K_UP,
+                                ev.key == pygame.K_DOWN,
+                            )
+                        )
                         if ev.key == pygame.K_ESCAPE:
                             self.done = True
                             break
                         if ev.key == pygame.K_RETURN:
                             self.run = self.apps[self.my_apps[self.selection]].run
-                            if self.run.startswith('@'):
+                            if self.run.startswith("@"):
                                 self.builtin(self.run[1:])
                             break
-                    elif ev.type == pygame.JOYAXISMOTION: # pygame.JOYHATMOTION):
+                    elif ev.type == pygame.JOYAXISMOTION:  # pygame.JOYHATMOTION):
                         threshold = 0.75
                         # axis = ev.axis % 2
                         axis = ev.axis
@@ -443,23 +447,23 @@ class Homescreen:
                             if self.joy_axis[axis] != -1:
                                 # print(axis, ev.value)
                                 if dr == 0:
-                                    self.move((1,0,0,0))
+                                    self.move((1, 0, 0, 0))
                                 else:
-                                    self.move((0,0,1,0))
+                                    self.move((0, 0, 1, 0))
                                 self.joy_axis[axis] = -1
                         elif ev.value > threshold:
                             if self.joy_axis[axis] != 1:
                                 # print(axis, ev.value)
                                 if dr == 0:
-                                    self.move((0,1,0,0))
+                                    self.move((0, 1, 0, 0))
                                 else:
-                                    self.move((0,0,0,1))
+                                    self.move((0, 0, 0, 1))
                                 self.joy_axis[axis] = 1
                         else:
                             self.joy_axis[axis] = 0
                     elif ev.type == pygame.JOYBUTTONDOWN:
                         self.run = self.apps[self.my_apps[self.selection]].run
-                        if self.run.startswith('@'):
+                        if self.run.startswith("@"):
                             self.builtin(self.run[1:])
                         break
 
@@ -551,4 +555,3 @@ def prop(name, line):
 if __name__ == "__main__":
     homescreen = Homescreen()
     homescreen.run()
-
