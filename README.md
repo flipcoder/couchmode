@@ -3,7 +3,9 @@ App Launcher for Raspberry PIs and Linux HTPCs
 
 ## Install
 
-- Install `cec-utils` for your distribution
+- Install the following packages for your distribution:
+    - cec-utils
+    - python3-gi-cairo
 
 - Install dependencies:
 
