@@ -13,6 +13,11 @@ from PIL import Image, ImageFilter
 import threading
 import yaml
 import datetime
+import gi
+gi.require_version('Rsvg', '2.0')
+from gi.repository import Rsvg as rsvg
+import cairo
+import array
 
 FULLSCREEN = False
 
@@ -86,27 +91,27 @@ def load(entry):
         return None
     try:
         fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], theme)
+        print(fn)
         if not fn:
-            fn = '/usr/share/icons/Faenza/apps/96/' + icon_fn + '.png'
+            # fn = '/usr/share/icons/Faenza/apps/96/' + icon_fn + '.png'
+            fn = '/usr/share/icons/Faenza/apps/scalable/' + icon_fn + '.svg'
             # fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], 'Adwaita')
     except TypeError:
         print('Type Error when loading', entry.name)
         return None
     # print('icon fn:', fn)
     if fn.endswith('.svg'):
-        try:
-            svg = Parser.parse_file(fn)
-        except:
-            print('error parsing', entry.name)
-            return None
-        rast = Rasterizer()
-        imbuf = rast.rasterize(svg, *icon_sz)
-        if not imbuf:
-            print('error rasterzing', entry.name)
-            return None
-        im = Image.frombytes('RGBA', tuple(icon_sz), imbuf)
-        icon = pygame.image.fromstring(im.tobytes(), icon_sz, im.mode).convert_alpha()
-        # icon = pygame.transform.scale(icon, icon_sz)
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, *icon_sz)
+        ctx = cairo.Context(surface)
+        svg = rsvg.Handle.new_from_file(fn)
+        dim = svg.get_dimensions()
+        dim = ivec2(dim.width, dim.height)
+        scale = icon_sz[0]/dim[0]
+        ctx.scale(scale,scale)
+        svg.render_cairo(ctx)
+        im = Image.frombuffer('RGBA', tuple(icon_sz), surface.get_data().tobytes(), 'raw', 'BGRA', 0, 0)
+        buf = im.tobytes()
+        icon = pygame.image.fromstring(buf, icon_sz, 'RGBA').convert_alpha()
     elif fn.endswith('.png'):
         icon = pygame.image.load(fn).convert_alpha()
         icon = pygame.transform.scale(icon, icon_sz)
@@ -125,10 +130,10 @@ def start():
     global resolution, screen, buf, clock, my_apps, apps
 
     resolution = ivec2(1920, 1080)
-    pygame.display.set_caption('Couch Mode')
     found = False
     pygame.init()
     pygame.mouse.set_visible(False)
+    pygame.display.set_caption('Couch Mode')
     # drivers = ['fbcon', 'directfb', 'svgalib']
     # for driver in drivers:
     #     if not os.getenv('SDL_VIDEODRIVER'):
@@ -215,9 +220,11 @@ for app in my_apps:
     try:
         # print('app2', app)
         load(apps[app])
-    except ValueError:
+    except ValueError as e:
+        print(e)
         pass
-    except KeyError:
+    except KeyError as e:
+        print(e)
         pass
         # pygame.quit()
         # raise
@@ -348,7 +355,7 @@ while not done:
             # print(y)
             if app.icon:
                 screen.blit(app.icon, (x, y))
-                write(app.name, ivec2(app.icon.get_rect()[2]//2 + x, y + icon_sz[1] + 16))
+                write(app.name, ivec2(icon_sz[0]//2 + x, y + icon_sz[1] + 16))
             if select == i:
                 pygame.draw.rect(screen, pygame.Color('black'), (x+2,y+2,*icon_sz), 8)
                 pygame.draw.rect(screen, pygame.Color('darkgray'), (x,y,*icon_sz), 8)
