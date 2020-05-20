@@ -240,6 +240,11 @@ y_offset = y_wrap // (resolution[0] - icon_sz[0])
 # print(y_offset)
 
 pygame.font.init()
+pygame.joystick.init()
+joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
+for joy in joysticks:
+    joy.init()
+
 font = pygame.font.Font(pygame.font.get_default_font(), 24)
 
 def write(text, pos, color=(255, 255, 255)):
@@ -314,6 +319,27 @@ while not done:
                 if ev.key == pygame.K_RETURN:
                     run = apps[my_apps[select]].run
                     break
+            elif ev.type == pygame.JOYAXISMOTION:
+                if ev.axis % 2 == 0:
+                    print(ev.axis, ev.value)
+                    if ev.value < -0.2:
+                        select = max(0, select - 1)
+                        dirty = True
+                    if ev.value > 0.2:
+                        select = min(len(my_apps)-1, select + 1)
+                        dirty = True
+                else:
+                    pass
+                    # if ev.value < -0.2:
+                    #     select = select + min(len(my_apps)-1, y_offset)
+                    #     dirty = True
+                    # if ev.value > 0.2:
+                    #     select = select - min(select, y_offset)
+                    #     dirty = True
+            elif ev.type == pygame.JOYBUTTONDOWN:
+                run = apps[my_apps[select]].run
+                break
+    
     if done:
         break
     
