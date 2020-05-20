@@ -2,4 +2,6 @@ pygame
 cec
 pyxdg
 pyglm
+pycairo
+pyyaml
 pynanosvg

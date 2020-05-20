@@ -8,7 +8,6 @@ from dataclasses import dataclass
 import xdg.DesktopEntry
 import xdg.IconTheme
 import random
-from svg import Parser, Rasterizer, SVG
 from PIL import Image, ImageFilter
 import threading
 import yaml
@@ -17,7 +16,6 @@ import gi
 gi.require_version('Rsvg', '2.0')
 from gi.repository import Rsvg as rsvg
 import cairo
-import array
 
 FULLSCREEN = False
 
@@ -58,12 +56,10 @@ class CEC(threading.Thread):
 with open('config.yaml', 'r') as cfg:
     cfg = yaml.safe_load(cfg)
 
-if 'icon_size' in cfg:
-    icon_sz = ivec2(cfg['icon_size'])
-else:
-    icon_sz = ivec2(156)
+icon_sz = ivec2(cfg.get('icon_size', 156))
 
 theme = cfg.get('theme', None)
+browser = cfg.get('browser', None)
 
 cec = CEC()
 cec.start()
@@ -204,11 +200,14 @@ for i, app in enumerate(my_apps[:]):
         app = app[key]
         # print(key)
         name = app.get('name', key)
-        run = os.path.expanduser(app.get('run', key))
-        if not run:
-            web = app.get('web', None)
-            if web:
-                run = web + ' ' + run
+        run = app.get('run', None)
+        if run:
+            run = os.path.expanduser(run)
+        else:
+            run = key
+        web = app.get('web', None)
+        if web:
+            run = browser + ' ' + web
         icon = app.get('icon', key)
         icon = os.path.expanduser(icon)
         apps[key] = entry = Entry(name, icon, run)
@@ -236,20 +235,25 @@ dirty = True
 border = 64
 padding = ivec2(176, 96)
 y_wrap = resolution[0] - icon_sz[0] - padding[0]*2
-y_offset = y_wrap // (resolution[0] - icon_sz[0])
+# y_offset = y_wrap // (resolution[0] - icon_sz[0])
+y_offset = 5
 # print(y_offset)
 
 pygame.font.init()
 pygame.joystick.init()
 joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
+joy_last_dir = 0
 for joy in joysticks:
     joy.init()
 
 font = pygame.font.Font(pygame.font.get_default_font(), 24)
 
-def write(text, pos, color=(255, 255, 255)):
+def write(text, pos, color=(255, 255, 255), underline=False):
     global screen, resolution
     pos = ivec2(*pos)
+    
+    if underline:
+        font.set_underline(True)
     
     # shadow
     textbuf = font.render(text, True, (0,0,0))
@@ -258,6 +262,9 @@ def write(text, pos, color=(255, 255, 255)):
     # text
     textbuf = font.render(text, True, color)
     screen.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2]//2, 0))
+    
+    if underline:
+        font.set_underline(False)
     
 
 last_date = None
@@ -318,16 +325,23 @@ while not done:
                     break
                 if ev.key == pygame.K_RETURN:
                     run = apps[my_apps[select]].run
+                    if run == '@desktop':
+                        done = True
                     break
             elif ev.type == pygame.JOYAXISMOTION:
                 if ev.axis % 2 == 0:
-                    print(ev.axis, ev.value)
                     if ev.value < -0.2:
-                        select = max(0, select - 1)
-                        dirty = True
+                        if joy_last_dir != 1:
+                            select = max(0, select - 1)
+                            dirty = True
+                            joy_last_dir = -1
                     if ev.value > 0.2:
-                        select = min(len(my_apps)-1, select + 1)
-                        dirty = True
+                        if joy_last_dir != 1:
+                            select = min(len(my_apps)-1, select + 1)
+                            dirty = True
+                            joy_last_dir = 1
+                    else:
+                        joy_last_dir = 0
                 else:
                     pass
                     # if ev.value < -0.2:
@@ -338,6 +352,8 @@ while not done:
                     #     dirty = True
             elif ev.type == pygame.JOYBUTTONDOWN:
                 run = apps[my_apps[select]].run
+                if run == '@desktop':
+                    done = True
                 break
     
     if done:
@@ -374,6 +390,10 @@ while not done:
             iconb = icon_sz[0] + border * 2
             xx = i * iconb
             x = (xx % y_wrap) // iconb * iconb + padding[0]
+            
+            #center
+            x += padding[0] // 4 + padding[0] // 2
+            
             # print(y_offset)
             y = (xx // y_wrap) * iconb + padding[0]
             # ysz = i * icon_sz[1] + i * 2 * border
@@ -381,10 +401,10 @@ while not done:
             # print(y)
             if app.icon:
                 screen.blit(app.icon, (x, y))
-                write(app.name, ivec2(icon_sz[0]//2 + x, y + icon_sz[1] + 16))
-            if select == i:
-                pygame.draw.rect(screen, pygame.Color('black'), (x+2,y+2,*icon_sz), 8)
-                pygame.draw.rect(screen, pygame.Color('darkgray'), (x,y,*icon_sz), 8)
+                write(app.name, ivec2(icon_sz[0]//2 + x, y + icon_sz[1] + 16), underline=(select == i))
+            # if select == i:
+            #     pygame.draw.rect(screen, pygame.Color('black'), (x+2,y+2,*icon_sz), 8)
+            #     pygame.draw.rect(screen, pygame.Color('darkgray'), (x,y,*icon_sz), 8)
                 
         pygame.display.flip()
         dirty = False
