@@ -18,8 +18,6 @@ from gi.repository import Rsvg as rsvg
 import cairo
 import math
 
-FULLSCREEN = False
-
 class CEC(threading.Thread):
     def run(self):
         self.buttons = set()
@@ -59,6 +57,7 @@ with open('config.yaml', 'r') as cfg:
 
 icon_sz = ivec2(cfg.get('icon_size', 156))
 
+fullscreen = cfg.get('fullscreen', False)
 theme = cfg.get('theme', None)
 browser = cfg.get('browser', None)
 
@@ -202,7 +201,7 @@ def start():
     #     pygame.quit()
     #     sys.exit(1)
     #     return None
-    screen = pygame.display.set_mode(resolution, pygame.FULLSCREEN if FULLSCREEN else 0)
+    screen = pygame.display.set_mode(resolution, pygame.FULLSCREEN if fullscreen else 0)
     pygame.key.set_repeat(100, 100)
     # buf = pygame.Surface(resolution)
     # buf.fill((0,0,0))
@@ -441,7 +440,7 @@ while not done:
             subprocess.check_call(params)
         except subprocess.CalledProcessError:
             pass
-        screen = pygame.display.set_mode(resolution, pygame.FULLSCREEN if FULLSCREEN else 0)
+        screen = pygame.display.set_mode(resolution, pygame.FULLSCREEN if fullscreen else 0)
         pygame.mouse.set_visible(False)
         dirty = True
         continue

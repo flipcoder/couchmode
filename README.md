@@ -1,6 +1,6 @@
 # Couch Mode
 
-App Launcher for Raspberry PIs and Linux HTPCs
+Modern Homescreen for Raspberry PIs and Linux HTPCs.
 
 I just started this project, so don't expect much yet!
 
@@ -64,7 +64,7 @@ apps:
     - steamlink
     - apps:
         name: 'Apps'
-        run: 'echo'
+        run: '@apps'
         icon: system-software-installer
     - cheese:
         icon: /usr/share/icons/Faenza/devices/scalable/camera.svg
@@ -79,6 +79,7 @@ apps:
         run: 'poweroff'
 browser: 'vimb'
 background: '~/path/to/background.png'
+fullscreen: true
 ```
 
 
