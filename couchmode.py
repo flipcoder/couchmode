@@ -2,7 +2,7 @@
 
 import sys, os
 import subprocess
-from glm import ivec2
+from glm import ivec2, vec3, vec4
 import pygame
 from dataclasses import dataclass
 import xdg.DesktopEntry
@@ -16,6 +16,7 @@ import gi
 gi.require_version('Rsvg', '2.0')
 from gi.repository import Rsvg as rsvg
 import cairo
+import math
 
 FULLSCREEN = False
 
@@ -80,6 +81,33 @@ class Entry:
 apps = {}
 
 BLACK = (0,0,0)
+LIGHT_GRAY = pygame.Color('lightgray')
+DARK_GRAY = pygame.Color('darkgray')
+WHITE = (255, 255, 255)
+
+def rounded_rect(sz, col=(255,255,255)):
+    w, h = sz
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+    ctx = cairo.Context(surface)
+    rad = 18.5
+    deg = math.pi / 180
+    x,y = 0,0
+    ctx.new_sub_path()
+    ctx.arc(x + w - rad, y + rad, rad, -90 * deg, 0 * deg)
+    ctx.arc(x + w - rad, y + h - rad, rad, 0 * deg, 90 * deg)
+    ctx.arc(x + rad, y + h - rad, rad, 90 * deg, 180 * deg)
+    ctx.arc(x + rad, y + rad, rad, 180 * deg, 270 * deg)
+    ctx.close_path()
+    ctx.set_source_rgba(*(vec4(vec3(col)/255, 0.5)))
+    ctx.fill_preserve()
+    ctx.set_line_width(6.0)
+    ctx.stroke()
+    # scale = icon_sz[0]/dim[0]
+    # ctx.scale(scale,scale)
+    # svg.render_cairo(ctx)
+    im = Image.frombuffer('RGBA', (w,h), surface.get_data().tobytes(), 'raw', 'BGRA', 0, 0)
+    buf = im.tobytes()
+    return pygame.image.fromstring(buf, (w,h), 'RGBA').convert_alpha()
 
 def load(entry):
     icon_fn = entry.icon_fn = os.path.expanduser(entry.icon_fn)
@@ -109,8 +137,12 @@ def load(entry):
         buf = im.tobytes()
         icon = pygame.image.fromstring(buf, icon_sz, 'RGBA').convert_alpha()
     elif fn.endswith('.png'):
-        icon = pygame.image.load(fn).convert_alpha()
-        icon = pygame.transform.scale(icon, icon_sz)
+        # icon = pygame.image.load(fn).convert_alpha()
+        im = Image.open(fn)
+        im = im.resize(tuple(icon_sz), Image.ANTIALIAS)
+        buf = im.tobytes()
+        icon = pygame.image.fromstring(buf, icon_sz, 'RGBA').convert_alpha()
+        # icon = pygame.transform.scale(icon, icon_sz)
     else:
         return None
     entry.icon = icon
@@ -248,7 +280,13 @@ for joy in joysticks:
 
 font = pygame.font.Font(pygame.font.get_default_font(), 24)
 
-def write(text, pos, color=(255, 255, 255), underline=False):
+selector_sz = ivec2(icon_sz[0] + border//4, icon_sz[1] + border//4 + 42)
+selector = rounded_rect(selector_sz, WHITE)
+# selector.set_alpha(128)
+# selector = pygame.Surface(icon_sz).convert_alpha()
+# selector.fill((0,0,0))
+
+def write(text, pos, color=(255, 255, 255), shadow=(0,0,0), shadow_offset=ivec2(1,1), underline=False):
     global screen, resolution
     pos = ivec2(*pos)
     
@@ -256,8 +294,8 @@ def write(text, pos, color=(255, 255, 255), underline=False):
         font.set_underline(True)
     
     # shadow
-    textbuf = font.render(text, True, (0,0,0))
-    screen.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2]//2 + 2, 2))
+    textbuf = font.render(text, True, shadow)
+    screen.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2]//2 + shadow_offset[0], shadow_offset[1]))
     
     # text
     textbuf = font.render(text, True, color)
@@ -374,6 +412,8 @@ while not done:
                 
     if dirty:
         # screen.fill(BLACK)
+        w, h = icon_sz
+        
         screen.blit(background, (0,0))
         write(date, ivec2(resolution[0]/2, 16))
         
@@ -387,7 +427,7 @@ while not done:
             except IndexError:
                 break
             # y_wrap = resolution[0] - icon_sz[0] - padding[0]*2
-            iconb = icon_sz[0] + border * 2
+            iconb = w + border * 2
             xx = i * iconb
             x = (xx % y_wrap) // iconb * iconb + padding[0]
             
@@ -399,9 +439,28 @@ while not done:
             # ysz = i * icon_sz[1] + i * 2 * border
             # y = (xx // resolution[0]) * ysz
             # print(y)
+            pad = 8
+            if select ==  i:
+                screen.blit(selector, (x + (w-selector_sz[0])//2, y + (h-selector_sz[0])//2,selector_sz[0],selector_sz[1]))
             if app.icon:
                 screen.blit(app.icon, (x, y))
-                write(app.name, ivec2(icon_sz[0]//2 + x, y + icon_sz[1] + 16), underline=(select == i))
+                name = app.name
+                pad = max(len(name), pad)
+                # print(pad)
+                # if len(name) < 16:
+                #     pad = 16 - len(name)
+                #     name = ' ' * (pad//2) + name + ' ' * (pad//2)
+                write(name, ivec2(w//2 + x, y + h + 16)) #, underline=(select == i))
+            # if select == i:
+            #     pad += 2
+                # pygame.draw.aaline(screen, pygame.Color('white'), (x+2,y+h+8), (x+w, y+h+8))
+                # pygame.draw.aaline(screen, pygame.Color('black'), (x+2,y+h+10), (x+w, y+h+10))
+                # pygame.draw.aaline(screen, pygame.Color('white'), (x+2,y+h+48), (x+w, y+h+48))
+                # pygame.draw.aaline(screen, pygame.Color('black'), (x+2,y+h+50), (x+w, y+h+50))
+                # write(' '*16, ivec2(icon_sz[0]//2 + x, y + 16 * 2), BLACK, underline=True)
+                # write(' '*16, ivec2(icon_sz[0]//2 + x, y + 16 * 2 + 2), WHITE, underline=True)
+                # write('_'*pad, ivec2(w//2 + x, y + h - 12), LIGHT_GRAY, DARK_GRAY, shadow_offset=(0,1), underline=True)
+                # write('_'*pad, ivec2(w//2 + x, y + h + 16 + 2), DARK_GRAY, LIGHT_GRAY, shadow_offset=(0,1), underline=True)
             # if select == i:
             #     pygame.draw.rect(screen, pygame.Color('black'), (x+2,y+2,*icon_sz), 8)
             #     pygame.draw.rect(screen, pygame.Color('darkgray'), (x,y,*icon_sz), 8)
