@@ -32,12 +32,12 @@ class CEC(threading.Thread):
             if b'key pressed' in line:
                 line = line[line.find(b'key pressed: ') + len('key pressed: '):]
                 line = line[:line.find(b' ')]
-                print(line)
+                # print(line)
                 self.buttons.add(line)
             elif b'key released' in line:
                 line = line[line.find(b'key released: ') + len('key released: '):]
                 line = line[:line.find(b' ')]
-                print(b'- ' + line)
+                # print(b'- ' + line)
                 if line in self.buttons:
                     self.buttons.remove(line)
     
@@ -85,7 +85,7 @@ LIGHT_GRAY = pygame.Color('lightgray')
 DARK_GRAY = pygame.Color('darkgray')
 WHITE = (255, 255, 255)
 
-def rounded_rect(sz, col=(255,255,255)):
+def draw_selector(sz, col=(255,255,255)):
     w, h = sz
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
     ctx = cairo.Context(surface)
@@ -100,7 +100,30 @@ def rounded_rect(sz, col=(255,255,255)):
     ctx.close_path()
     ctx.set_source_rgba(*(vec4(vec3(col)/255, 0.5)))
     ctx.fill_preserve()
-    ctx.set_line_width(6.0)
+    ctx.set_line_width(4.0)
+    ctx.set_source_rgba(*(vec4(vec3(col)/255, 0.8)))
+    ctx.stroke()
+    im = Image.frombuffer('RGBA', (w,h), surface.get_data().tobytes(), 'raw', 'BGRA', 0, 0)
+    buf = im.tobytes()
+    return pygame.image.fromstring(buf, (w,h), 'RGBA').convert_alpha()
+
+def draw_panel(sz, col=(0,0,0)):
+    w, h = sz
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+    ctx = cairo.Context(surface)
+    rad = 18.5
+    deg = math.pi / 180
+    x,y = 0,0
+    ctx.new_sub_path()
+    ctx.arc(x + w - rad, y + rad, rad, -90 * deg, 0 * deg)
+    ctx.arc(x + w - rad, y + h - rad, rad, 0 * deg, 90 * deg)
+    ctx.arc(x + rad, y + h - rad, rad, 90 * deg, 180 * deg)
+    ctx.arc(x + rad, y + rad, rad, 180 * deg, 270 * deg)
+    ctx.close_path()
+    ctx.set_source_rgba(*(vec4(vec3(col)/255, 0.5)))
+    ctx.fill_preserve()
+    # ctx.set_line_width(4.0)
+    # ctx.set_source_rgba(*(vec4(vec3(col)/255, 0.8)))
     ctx.stroke()
     # scale = icon_sz[0]/dim[0]
     # ctx.scale(scale,scale)
@@ -109,13 +132,26 @@ def rounded_rect(sz, col=(255,255,255)):
     buf = im.tobytes()
     return pygame.image.fromstring(buf, (w,h), 'RGBA').convert_alpha()
 
+def load_svg(fn, sz):
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, *sz)
+    ctx = cairo.Context(surface)
+    svg = rsvg.Handle.new_from_file(fn)
+    dim = svg.get_dimensions()
+    dim = ivec2(dim.width, dim.height)
+    scale = sz[0]/dim[0]
+    ctx.scale(scale,scale)
+    svg.render_cairo(ctx)
+    im = Image.frombuffer('RGBA', tuple(sz), surface.get_data().tobytes(), 'raw', 'BGRA', 0, 0)
+    buf = im.tobytes()
+    return pygame.image.fromstring(buf, sz, 'RGBA').convert_alpha()
+
 def load(entry):
     icon_fn = entry.icon_fn = os.path.expanduser(entry.icon_fn)
     if not icon_fn:
         return None
     try:
         fn = xdg.IconTheme.getIconPath(icon_fn, icon_sz[0], theme)
-        print(fn)
+        # print(fn)
         if not fn:
             # fn = '/usr/share/icons/Faenza/apps/96/' + icon_fn + '.png'
             fn = '/usr/share/icons/Faenza/apps/scalable/' + icon_fn + '.svg'
@@ -125,17 +161,7 @@ def load(entry):
         return None
     # print('icon fn:', fn)
     if fn.endswith('.svg'):
-        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, *icon_sz)
-        ctx = cairo.Context(surface)
-        svg = rsvg.Handle.new_from_file(fn)
-        dim = svg.get_dimensions()
-        dim = ivec2(dim.width, dim.height)
-        scale = icon_sz[0]/dim[0]
-        ctx.scale(scale,scale)
-        svg.render_cairo(ctx)
-        im = Image.frombuffer('RGBA', tuple(icon_sz), surface.get_data().tobytes(), 'raw', 'BGRA', 0, 0)
-        buf = im.tobytes()
-        icon = pygame.image.fromstring(buf, icon_sz, 'RGBA').convert_alpha()
+        icon = load_svg(fn, icon_sz)
     elif fn.endswith('.png'):
         # icon = pygame.image.load(fn).convert_alpha()
         im = Image.open(fn)
@@ -214,12 +240,20 @@ except pygame.error:
     background = None
 if background:
     # background = background.resize((1920 + 64, 1080 + 64), Image.ANTIALIAS)
-    background = background.filter(ImageFilter.GaussianBlur(radius=10))
+    background = background.filter(ImageFilter.GaussianBlur(radius=8))
     background = pygame.image.fromstring(background.tobytes(), background.size, background.mode)
     background = background.convert()
 
 # my_apps = list(apps.keys()) # all
 my_apps = cfg['apps']
+
+tray = [
+    '/usr/share/icons/Faenza/status/scalable/audio-volume-high.svg',
+    '/usr/share/icons/Faenza/status/scalable/nm-signal-100.svg',
+]
+tray_sz = ivec2(32)
+for i, fn in enumerate(tray):
+    tray[i] = load_svg(tray[i], tray_sz)
 
 for i, app in enumerate(my_apps[:]):
     if type(app) is dict:
@@ -281,7 +315,9 @@ for joy in joysticks:
 font = pygame.font.Font(pygame.font.get_default_font(), 24)
 
 selector_sz = ivec2(icon_sz[0] + border//4, icon_sz[1] + border//4 + 42)
-selector = rounded_rect(selector_sz, WHITE)
+selector = draw_selector(selector_sz)
+panel_sz = ivec2(resolution[0], 76)
+panel = draw_panel(panel_sz)
 # selector.set_alpha(128)
 # selector = pygame.Surface(icon_sz).convert_alpha()
 # selector.fill((0,0,0))
@@ -411,11 +447,18 @@ while not done:
         continue
                 
     if dirty:
+        
         # screen.fill(BLACK)
         w, h = icon_sz
         
         screen.blit(background, (0,0))
-        write(date, ivec2(resolution[0]/2, 16))
+        
+        screen.blit(panel, (0, -panel_sz[1]//2))
+        
+        write(date, ivec2(resolution[0]/2, 8))
+        
+        for i, icon in enumerate(tray[::-1]):
+            screen.blit(icon, (resolution[0] - ((i+1) * tray_sz[0]) - i*12 - 24, 2))
         
         for i in range(len(my_apps)):
             if i < 0:
