@@ -364,7 +364,7 @@ class Homescreen:
             self.selection = self.selection - min(self.selection, self.y_offset)
             self.dirty = True
         if arrows[3]:
-            self.selection = min(self.selection + self.y_offset, len(self.my_apps) - 2)
+            self.selection = min(self.selection + self.y_offset, len(self.my_apps) - 1)
             self.dirty = True
 
     def builtin(self, app):
