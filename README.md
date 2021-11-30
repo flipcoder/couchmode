@@ -2,7 +2,7 @@
 
 Modern Homescreen for Raspberry PIs and Linux HTPCs.
 
-I just started this project, so don't expect much yet!
+This project is just a proof of concept, so don't expect much yet!
 
 ![](https://i.imgur.com/YM4rx0y.png)
 
@@ -88,4 +88,17 @@ fullscreen: true
 ```
 ./couchmode.py
 ```
+
+
+## Progress
+
+- [x] Proof of Concept
+- [x] Keyboard Support
+- [x] Gamepad Support
+- [x] CEC Remote Support
+- [ ] Joy2Key
+- [ ] Multiple Pages
+- [ ] Movable Icons
+- [ ] Animations?
+- [ ] System Apps
 

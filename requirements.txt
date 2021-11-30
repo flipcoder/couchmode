@@ -1,6 +1,7 @@
+pygobject
 pygame
 cec
-pyxdg
+xdg
 pyglm
 pycairo
 pyyaml

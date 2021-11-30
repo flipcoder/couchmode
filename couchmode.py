@@ -2,8 +2,13 @@
 
 import sys, os
 import subprocess
-from glm import ivec2, vec3, vec4
-import pygame
+from glm import ivec2, vec2, vec3, vec4
+with open(os.devnull, 'w') as devnull:
+    # suppress pygame messages
+    stdout = sys.stdout
+    sys.stdout = devnull
+    import pygame
+    sys.stdout = stdout
 from dataclasses import dataclass
 import xdg.DesktopEntry
 import xdg.IconTheme
@@ -74,12 +79,13 @@ class Homescreen:
         with open("config.yaml", "r") as cfg:
             self.cfg = yaml.safe_load(cfg)
 
-        self.icon_sz = ivec2(self.cfg.get("icon_size", 156))
 
         self.fullscreen = self.cfg.get("fullscreen", False)
         self.theme = self.cfg.get("theme", None)
         self.browser = self.cfg.get("browser", None)
         self.res = ivec2(*self.cfg.get("resolution", (1920, 1080)))
+        
+        self.icon_sz = ivec2(self.cfg.get("icon_size", ivec2(self.res[0]/12.3)))
 
         self.cec = CEC()
         self.cec.start()
@@ -125,11 +131,16 @@ class Homescreen:
         #     pygame.quit()
         #     sys.exit(1)
         #     return None
+        self.flags = pygame.DOUBLEBUF | \
+            pygame.FULLSCREEN if self.fullscreen else 0
         self.screen = pygame.display.set_mode(
-            self.res, pygame.FULLSCREEN if self.fullscreen else 0
+            self.res, self.flags
         )
         pygame.key.set_repeat(100, 100)
-        # buf = pygame.Surface(self.res)
+        self.page = 0
+        self.pages = [pygame.Surface(self.res).convert_alpha()]
+        for page in self.pages:
+            page.fill((0,0,0,0))
         # buf.fill((0,0,0))
 
         self.clock = pygame.time.Clock()
@@ -155,7 +166,7 @@ class Homescreen:
             "/usr/share/icons/Faenza/status/scalable/audio-volume-high.svg",
             "/usr/share/icons/Faenza/status/scalable/nm-signal-100.svg",
         ]
-        self.tray_sz = ivec2(32)
+        self.tray_sz = ivec2(self.res[0] // 60)
         for i, fn in enumerate(self.tray):
             self.tray[i] = self.load_svg(fn, self.tray_sz)
 
@@ -188,12 +199,19 @@ class Homescreen:
         self.selection = 0
 
         self.dirty = True
-        self.border = 64
-        self.padding = ivec2(176, 96)
-        self.y_wrap = self.res[0] - self.icon_sz[0] - self.padding[0] * 2
-        # y_offset = y_wrap // (self.res[0] - self.icon_sz[0])
-        self.y_offset = 5
-        # print(y_offset)
+        self.border = ivec2(
+            self.res[0] // 4,
+            self.res[0] // 32
+        )
+        # self.padding = ivec2(176, 96)
+        # self.padding = ivec2(self.res[0] // 12, self.res[1] // 20)
+        # self.padding = ivec2(0,0)
+        # self.y_wrap = self.res[0] - self.icon_sz[0] - self.padding[0] * 2 - self.border * 2
+        self.grid = [4,3]
+        # self.y_wrap = self.res[0] - self.icon_sz[0] - self.padding[0] // 2
+        # grid = y_wrap // (self.res[0] - self.icon_sz[0])
+        
+        # print(grid)
 
         pygame.font.init()
         pygame.joystick.init()
@@ -205,10 +223,14 @@ class Homescreen:
         for joy in self.joysticks:
             joy.init()
 
-        self.font = pygame.font.Font(pygame.font.get_default_font(), 24)
+        self.font = pygame.font.Font(pygame.font.get_default_font(), self.res[0] // 80)
 
         w, h = self.icon_sz
-        self.selector_sz = ivec2(w + self.border // 4, h + self.border // 4 + 42)
+        self.selector_sz = ivec2(
+            w + self.border.x // 6,
+            h + self.border.y // 4 + self.border.y
+        )
+        # self.selector_sz = ivec2(self.selector_sz * (self.res[0]/1920))
         self.selector = self.draw_selector(self.selector_sz)
         self.panel_sz = ivec2(self.res[0], 76)
         self.panel = self.draw_panel(self.panel_sz)
@@ -326,6 +348,7 @@ class Homescreen:
 
     def write(
         self,
+        page,
         text,
         pos,
         color=(255, 255, 255),
@@ -340,7 +363,9 @@ class Homescreen:
 
         # shadow
         textbuf = self.font.render(text, True, shadow)
-        self.screen.blit(
+        # page.set_alpha(None)
+        
+        page.blit(
             textbuf,
             pos
             + ivec2(-textbuf.get_rect()[2] // 2 + shadow_offset[0], shadow_offset[1]),
@@ -348,7 +373,7 @@ class Homescreen:
 
         # text
         textbuf = self.font.render(text, True, color)
-        self.screen.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2] // 2, 0))
+        page.blit(textbuf, pos + ivec2(-textbuf.get_rect()[2] // 2, 0))
 
         if underline:
             self.font.set_underline(False)
@@ -361,10 +386,10 @@ class Homescreen:
             self.selection = min(len(self.my_apps) - 1, self.selection + 1)
             self.dirty = True
         if arrows[2]:
-            self.selection = self.selection - min(self.selection, self.y_offset)
+            self.selection = self.selection - min(self.selection, self.grid[0])
             self.dirty = True
         if arrows[3]:
-            self.selection = min(self.selection + self.y_offset, len(self.my_apps) - 1)
+            self.selection = min(self.selection + self.grid[0], len(self.my_apps) - 1)
             self.dirty = True
 
     def builtin(self, app):
@@ -374,174 +399,204 @@ class Homescreen:
             print("Not yet implemented")
             self.done = True
 
-    def run(self):
-        self.done = False
+    def update(self, dt):
+        self.dirty = True
+        
+        self.run = None
+        # date = subprocess.check_output(['date', '+%l:%M %p'])[:-1]
+        date = datetime.datetime.now().strftime("%l:%M %p")
+        if self.last_date != date:
+            self.last_date = date
+            self.dirty = True
 
-        last_date = None
-
-        while not self.done:
-            self.run = None
-            # date = subprocess.check_output(['date', '+%l:%M %p'])[:-1]
-            date = datetime.datetime.now().strftime("%l:%M %p")
-            if last_date != date:
-                last_date = date
-                self.dirty = True
-
-            if self.cec.buttons:
-                self.move(
-                    (
-                        b"left" in self.cec.buttons,
-                        b"right" in self.cec.buttons,
-                        b"up" in self.cec.buttons,
-                        b"down" in self.cec.buttons,
-                    )
+        if self.cec.buttons:
+            self.move(
+                (
+                    b"left" in self.cec.buttons,
+                    b"right" in self.cec.buttons,
+                    b"up" in self.cec.buttons,
+                    b"down" in self.cec.buttons,
                 )
+            )
 
-                for btn in self.cec.buttons:
-                    if btn == b"back":
-                        self.done = True
-                        break
-                    if btn == b"exit":
-                        self.done = True
-                        break
-                    if btn == b"select":
-                        self.run = self.apps[self.my_apps[select]].run
-                        if self.run.startswith("@"):
-                            self.builtin(self.run[1:])
-                        break
-                self.cec.buttons.clear()
+            for btn in self.cec.buttons:
+                if btn == b"back":
+                    self.done = True
+                    return False
+                if btn == b"exit":
+                    self.done = True
+                    return False
+                if btn == b"select":
+                    self.run = self.apps[self.my_apps[self.selection]].run
+                    if self.run.startswith("@"):
+                        self.builtin(self.run[1:])
+                    return False
+            self.cec.buttons.clear()
 
-            joy_move = defaultdict(lambda: False)
-            if not self.run or not self.done:
-                for ev in pygame.event.get():
-                    if ev.type == pygame.QUIT:
-                        self.done = True
-                        break
-                    elif ev.type == pygame.KEYDOWN:
-                        self.move(
-                            (
-                                ev.key == pygame.K_LEFT,
-                                ev.key == pygame.K_RIGHT,
-                                ev.key == pygame.K_UP,
-                                ev.key == pygame.K_DOWN,
-                            )
+        joy_move = defaultdict(lambda: False)
+        if not self.run or not self.done:
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    self.done = True
+                    break
+                elif ev.type == pygame.KEYDOWN:
+                    self.move(
+                        (
+                            ev.key == pygame.K_LEFT,
+                            ev.key == pygame.K_RIGHT,
+                            ev.key == pygame.K_UP,
+                            ev.key == pygame.K_DOWN,
                         )
-                        if ev.key == pygame.K_ESCAPE:
-                            self.done = True
-                            break
-                        if ev.key == pygame.K_RETURN:
-                            self.run = self.apps[self.my_apps[self.selection]].run
-                            if self.run.startswith("@"):
-                                self.builtin(self.run[1:])
-                            break
-                    elif ev.type == pygame.JOYAXISMOTION:  # pygame.JOYHATMOTION):
-                        threshold = 0.75
-                        # axis = ev.axis % 2
-                        axis = ev.axis
-                        dr = axis % 2
-                        if dr not in self.joy_axis:
-                            self.joy_axis[axis] = 0
-                            if abs(ev.value) < 0.1:
-                                continue
-                        if ev.value < -threshold:
-                            if self.joy_axis[axis] != -1:
-                                # print(axis, ev.value)
-                                if dr == 0:
-                                    self.move((1, 0, 0, 0))
-                                else:
-                                    self.move((0, 0, 1, 0))
-                                self.joy_axis[axis] = -1
-                        elif ev.value > threshold:
-                            if self.joy_axis[axis] != 1:
-                                # print(axis, ev.value)
-                                if dr == 0:
-                                    self.move((0, 1, 0, 0))
-                                else:
-                                    self.move((0, 0, 0, 1))
-                                self.joy_axis[axis] = 1
-                        else:
-                            self.joy_axis[axis] = 0
-                    elif ev.type == pygame.JOYBUTTONDOWN:
+                    )
+                    if ev.key == pygame.K_ESCAPE:
+                        self.done = True
+                        break
+                    if ev.key == pygame.K_RETURN:
                         self.run = self.apps[self.my_apps[self.selection]].run
                         if self.run.startswith("@"):
                             self.builtin(self.run[1:])
                         break
+                elif ev.type == pygame.JOYAXISMOTION:  # pygame.JOYHATMOTION):
+                    threshold = 0.75
+                    # axis = ev.axis % 2
+                    axis = ev.axis
+                    dr = axis % 2
+                    if dr not in self.joy_axis:
+                        self.joy_axis[axis] = 0
+                        if abs(ev.value) < 0.1:
+                            continue
+                    if ev.value < -threshold:
+                        if self.joy_axis[axis] != -1:
+                            # print(axis, ev.value)
+                            if dr == 0:
+                                self.move((1, 0, 0, 0))
+                            else:
+                                self.move((0, 0, 1, 0))
+                            self.joy_axis[axis] = -1
+                    elif ev.value > threshold:
+                        if self.joy_axis[axis] != 1:
+                            # print(axis, ev.value)
+                            if dr == 0:
+                                self.move((0, 1, 0, 0))
+                            else:
+                                self.move((0, 0, 0, 1))
+                            self.joy_axis[axis] = 1
+                    else:
+                        self.joy_axis[axis] = 0
+                elif ev.type == pygame.JOYBUTTONDOWN:
+                    self.run = self.apps[self.my_apps[self.selection]].run
+                    if self.run.startswith("@"):
+                        self.builtin(self.run[1:])
+                    break
 
-            if self.done:
+        if self.done:
+            return False
+
+        if self.run:
+            pygame.mouse.set_visible(True)
+            pygame.display.quit()
+            params = filter(lambda x: not x.startswith("%"), self.run.split())
+            try:
+                subprocess.check_call(params)
+            except subprocess.CalledProcessError:
+                pass
+            self.screen = pygame.display.set_mode(
+                self.res, self.flags
+            )
+            pygame.mouse.set_visible(False)
+            self.dirty = True
+            return False
+        
+        return True
+
+    def render(self):
+        if self.dirty:
+            page = self.pages[self.page]
+
+            # self.screen.fill(BLACK)
+            w, h = self.icon_sz
+            padding = self.res / 6
+            
+            self.screen.blit(self.background, (0, 0))
+
+            page.fill((0,0,0,0))
+            page.blit(self.panel, (0, -self.panel_sz[1] // 2))
+
+            self.write(page, self.date, ivec2(self.res[0] / 2, 8))
+
+            for i, icon in enumerate(self.tray[::-1]):
+                page.blit(
+                    icon,
+                    (self.res[0] - ((i + 1) * self.tray_sz[0]) - i * 12 - 24, 2),
+                )
+
+            for i in range(len(self.my_apps)):
+                if i < 0:
+                    continue
+                try:
+                    app = self.apps[self.my_apps[i]]
+                except KeyError:
+                    break
+                except IndexError:
+                    break
+
+                icon_entry_sz = ivec2(
+                    self.selector_sz[0] + w + padding[0],
+                    self.selector_sz[1] + h + padding[1]
+                )
+
+                screen_mid = ivec2(self.res[0] // 2, self.res[1] // 2)
+                x_idx = (i % self.grid[0])
+                y_idx = (i // self.grid[0])
+                x_ofs = x_idx*icon_entry_sz.x // 2
+                y_ofs = y_idx*icon_entry_sz.y // 2
+                x = screen_mid.x + x_ofs
+                y = screen_mid.y + y_ofs
+
+                x -= self.grid[0] * icon_entry_sz.x//4 - padding[0]//4
+                y -= self.grid[1] * icon_entry_sz.y//4
+
+                y += self.panel_sz[1] // 2
+
+                if self.selection == i:
+                    page.blit(
+                        self.selector,
+                        (
+                            x + (w - self.selector_sz[0]) // 2,
+                            y + (h - self.selector_sz[1]) // 2 + self.border.y//2,
+                            self.selector_sz[0],
+                            self.selector_sz[1],
+                        ),
+                    )
+                
+                if app.icon:
+                    ax, ay = x, y
+                    # img = pygame.transform.scale(app.icon, ivec2(w - t, h - t))
+                    page.blit(app.icon, (x, y))
+                    name = app.name
+                    self.write(page, name, ivec2(w // 2 + x, y + h + 16))
+                
+            # page.set_alpha(128)
+            # page = pygame.transform.scale(page, ivec2(self.res[0] - t, self.res[1] - t))
+            self.screen.blit(page, (0,0))
+            pygame.display.flip()
+            self.dirty = False
+
+    def run(self):
+        self.done = False
+        self.last_date = None
+        self.date = None
+        
+        self.t = self.dt = 0
+        
+        while not self.done:
+            dt = self.clock.tick(60)
+            self.t += dt * 0.1
+            if not self.update(dt):
                 break
 
-            if self.run:
-                pygame.mouse.set_visible(True)
-                pygame.display.quit()
-                params = filter(lambda x: not x.startswith("%"), self.run.split())
-                try:
-                    subprocess.check_call(params)
-                except subprocess.CalledProcessError:
-                    pass
-                self.screen = pygame.display.set_mode(
-                    self.res, pygame.FULLSCREEN if self.fullscreen else 0
-                )
-                pygame.mouse.set_visible(False)
-                self.dirty = True
-                continue
-
-            if self.dirty:
-
-                # self.screen.fill(BLACK)
-                w, h = self.icon_sz
-
-                self.screen.blit(self.background, (0, 0))
-
-                self.screen.blit(self.panel, (0, -self.panel_sz[1] // 2))
-
-                self.write(date, ivec2(self.res[0] / 2, 8))
-
-                for i, icon in enumerate(self.tray[::-1]):
-                    self.screen.blit(
-                        icon,
-                        (self.res[0] - ((i + 1) * self.tray_sz[0]) - i * 12 - 24, 2),
-                    )
-
-                for i in range(len(self.my_apps)):
-                    if i < 0:
-                        continue
-                    try:
-                        app = self.apps[self.my_apps[i]]
-                    except KeyError:
-                        break
-                    except IndexError:
-                        break
-
-                    iconb = w + self.border * 2
-                    xx = i * iconb
-                    x = (xx % self.y_wrap) // iconb * iconb + self.padding[0]
-
-                    # center
-                    x += self.padding[0] // 4 + self.padding[0] // 2
-
-                    y = (xx // self.y_wrap) * iconb + self.padding[0]
-
-                    pad = 8
-                    if self.selection == i:
-                        self.screen.blit(
-                            self.selector,
-                            (
-                                x + (w - self.selector_sz[0]) // 2,
-                                y + (h - self.selector_sz[0]) // 2,
-                                self.selector_sz[0],
-                                self.selector_sz[1],
-                            ),
-                        )
-                    if app.icon:
-                        self.screen.blit(app.icon, (x, y))
-                        name = app.name
-                        self.write(name, ivec2(w // 2 + x, y + h + 16))
-
-                pygame.display.flip()
-                self.dirty = False
-
-            self.clock.tick(15)
-
+            self.render()
+                
         self.cec.stop()
 
 
